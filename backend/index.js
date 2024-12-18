@@ -10,7 +10,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
-        origin: "*",
+        origin: "*", // 测试阶段允许所有来源
         methods: ["GET", "POST"]
     }
 });
@@ -18,7 +18,7 @@ const io = socketIo(server, {
 app.use(cors());
 app.use(express.json());
 
-// MongoDB连接
+// 连接MongoDB
 mongoose.connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true
@@ -28,20 +28,29 @@ mongoose.connect(process.env.MONGO_URI, {
     console.error("MongoDB connection error:", err);
 });
 
-// 导入用户路由
+// 导入路由和控制器
 const userRoutes = require('./routes/userRoutes');
+const playerController = require('./controllers/playerController');
+const playerRoutes = require('./routes/playerRoutes');
+
+// 将io实例传递给playerController，便于在controller中发送socket事件
+playerController.setIO(io);
+
+// 使用路由
 app.use('/api/auth', userRoutes);
+app.use('/api/player', playerRoutes);
 
 // 测试路由
 app.get('/', (req, res) => {
     res.send('Arcade Management System Backend');
 });
 
-// Socket.IO 连接
+// Socket.IO 连接事件
 io.on('connection', (socket) => {
-    console.log('New client connected');
+    console.log('New client connected:', socket.id);
+
     socket.on('disconnect', () => {
-        console.log('Client disconnected');
+        console.log('Client disconnected:', socket.id);
     });
 });
 
