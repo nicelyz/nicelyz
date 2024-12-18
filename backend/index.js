@@ -32,13 +32,14 @@ mongoose.connect(process.env.MONGO_URI, {
 const userRoutes = require('./routes/userRoutes');
 const playerController = require('./controllers/playerController');
 const playerRoutes = require('./routes/playerRoutes');
-
+const adminRoutes = require('./routes/adminRoutes');
 // 将io实例传递给playerController，便于在controller中发送socket事件
 playerController.setIO(io);
 
 // 使用路由
 app.use('/api/auth', userRoutes);
 app.use('/api/player', playerRoutes);
+app.use('/api/admin', adminRoutes);
 
 // 测试路由
 app.get('/', (req, res) => {
