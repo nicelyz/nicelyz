@@ -2,6 +2,7 @@
 const User = require('../models/User');
 const Device = require('../models/Device');
 const PointsRecord = require('../models/PointsRecord');
+const OperationLog = require('../models/OperationLog'); // 用于记录设备相关操作日志
 
 let io;
 const pendingOperations = {};
@@ -14,7 +15,7 @@ module.exports.setIO = (socketIO) => {
         console.log('Device or client connected:', socket.id);
 
         socket.on('feedback', (data) => {
-            // data应包含 { operationId: 'xxx', feedback: 'sf1000' 或 'sffail' }
+            // data应包含 { operationId: 'xxx', feedback: '...' }
             handleFeedback(data.operationId, data.feedback);
         });
 
@@ -26,53 +27,58 @@ module.exports.setIO = (socketIO) => {
 
 function handleFeedback(operationId, feedback) {
     const op = pendingOperations[operationId];
-    if (!op) return; // 无此操作，可能定时器超时已清除
+    if (!op) return; // 无此操作，可能定时器已触发处理过
 
     clearTimeout(op.timeout);
 
-    // 判断反馈是成功还是失败
-    // 假设成功反馈形如 'sf1000'，失败 'sffail' or 不符合预期
-    if (feedback && feedback.startsWith('sf') && feedback !== 'sffail') {
-        // 成功反馈
-        finalizeCreditOperation(operationId, 'success');
-    } else {
-        // 失败反馈
-        finalizeCreditOperation(operationId, 'failed');
+    // 根据op.category判断是上分操作还是设备操作
+    if (op.category === 'credit') {
+        // 对上分反馈进行判断：成功反馈以sf开头且非sffail
+        if (feedback && feedback.startsWith('sf') && feedback !== 'sffail') {
+            finalizeCreditOperation(operationId, 'success');
+        } else {
+            finalizeCreditOperation(operationId, 'failed');
+        }
+    } else if (op.category === 'deviceOperation') {
+        // 设备操作的成功反馈为xxxok（hzok、hbok、ksok、jsok）
+        // 失败或无响应则failed
+        if (feedback && feedback.endsWith('ok')) {
+            finalizeDeviceOperation(operationId, 'success');
+        } else {
+            finalizeDeviceOperation(operationId, 'failed');
+        }
     }
 }
 
+// 上分操作finalize
 async function finalizeCreditOperation(operationId, status) {
     const op = pendingOperations[operationId];
     if (!op) return;
 
     const { userId, deviceId, points, recordId } = op;
-    delete pendingOperations[operationId]; // 无论成功失败都先删除pending操作
+    delete pendingOperations[operationId];
 
     const user = await User.findById(userId);
     const device = await Device.findById(deviceId);
     const record = await PointsRecord.findById(recordId);
 
     if (!record || !user) {
-        // 如果关键数据缺失则无法正常更新，但至少不会报错
         return;
     }
 
     if (status === 'success') {
-        // 上分成功已在初始时扣分和占用设备，不需返还积分
         record.status = 'success';
         await record.save();
-        // 设备和用户已在credit时更新，这里无需变动
+        // 不需返还积分或修改设备状态，因为上分成功时设备已占用
     } else {
-        // 上分失败或超时，返还积分，标记用户异常
+        // failed或超时失败
         user.currentPoints += points;
         user.exceptionStatus = true;
         await user.save();
 
-        // 记录失败状态
         record.status = 'failed';
         await record.save();
 
-        // 仅在device存在的情况下恢复设备状态
         if (device) {
             device.status = 'idle';
             device.currentHolder = null;
@@ -83,9 +89,31 @@ async function finalizeCreditOperation(operationId, status) {
     }
 }
 
+// 设备操作finalize
+async function finalizeDeviceOperation(operationId, status) {
+    const op = pendingOperations[operationId];
+    if (!op) return;
+
+    const { userId, deviceId, recordId } = op;
+    delete pendingOperations[operationId];
+
+    const user = await User.findById(userId);
+    const device = await Device.findById(deviceId);
+    const record = await OperationLog.findById(recordId);
+
+    if (!record || !user) {
+        return;
+    }
+
+    record.status = status;
+    await record.save();
+    // 这些设备操作暂不需返还积分或标记异常状态，也不强制修改设备状态
+}
+
+// 上分API
 exports.credit = async (req, res) => {
     const { deviceId, points } = req.body;
-    const userId = req.headers.userid; // 测试阶段: 模拟玩家身份
+    const userId = req.headers.userid;
 
     if (!userId || !deviceId || !points) {
         return res.status(400).json({ message: '缺少必要参数' });
@@ -100,12 +128,10 @@ exports.credit = async (req, res) => {
         return res.status(400).json({ message: '用户不存在' });
     }
 
-    // 积分验证
     if (user.currentPoints < points) {
         return res.status(400).json({ message: '当前积分不足' });
     }
 
-    // 上分异常状态验证
     if (user.exceptionStatus) {
         return res.status(400).json({ message: '上分操作异常，请联系管理员' });
     }
@@ -115,7 +141,6 @@ exports.credit = async (req, res) => {
         return res.status(400).json({ message: '设备不可用或已被占用' });
     }
 
-    // 检查设备占用上限
     if (user.occupiedDevices >= 2) {
         return res.status(400).json({ message: '已达到设备占用上限' });
     }
@@ -129,10 +154,7 @@ exports.credit = async (req, res) => {
     device.currentHolder = user._id;
     await device.save();
 
-    // 生成operationId
     const operationId = 'op_' + Date.now();
-
-    // 创建积分记录，初始为pending状态，需要在PointsRecord.js中enum加入'pending'
     const record = await PointsRecord.create({
         userId: user._id,
         deviceId: device._id,
@@ -142,18 +164,15 @@ exports.credit = async (req, res) => {
         operationId
     });
 
-    // 发送上分指令给设备, 包含operationId
     const command = `###sf${points}e`;
     io.emit('command', { operationId, command });
 
-    // 设置定时器（测试用30秒）
     const timeout = setTimeout(() => {
-        // 超时处理
         finalizeCreditOperation(operationId, 'failed');
     }, 30000);
 
-    // 存储操作上下文
     pendingOperations[operationId] = {
+        category: 'credit',
         userId: user._id.toString(),
         deviceId: device._id.toString(),
         points,
@@ -164,9 +183,10 @@ exports.credit = async (req, res) => {
     return res.status(200).json({ message: '上分指令已发送', operationId });
 };
 
+// 下分API(无异步反馈)
 exports.debit = async (req, res) => {
     const { deviceId } = req.body;
-    const userId = req.headers.userid; // 测试用
+    const userId = req.headers.userid;
 
     if (!userId || !deviceId) {
         return res.status(400).json({ message: '缺少必要参数' });
@@ -182,7 +202,6 @@ exports.debit = async (req, res) => {
         return res.status(400).json({ message: '设备不可用或未被该玩家占用' });
     }
 
-    // 下分指令仍无异步反馈，后续可完善
     const command = `###tf`;
     io.emit('command', { operationId: 'op_'+Date.now(), command });
 
@@ -208,3 +227,68 @@ exports.debit = async (req, res) => {
 
     return res.status(200).json({ message: '下分操作完成', operationId });
 };
+
+// 通用设备操作初始化函数
+async function initiateDeviceOperation(req, res, operationType, commandPrefix) {
+    const { deviceId } = req.body;
+    const userId = req.headers.userid;
+
+    if (!userId || !deviceId) {
+        return res.status(400).json({ message: '缺少必要参数' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+        return res.status(400).json({ message: '用户不存在' });
+    }
+
+    const device = await Device.findById(deviceId);
+    if (!device) {
+        return res.status(400).json({ message: '设备不存在' });
+    }
+
+    // 这里可根据操作类型和设备状态做额外检查，如设备非故障才能执行
+
+    const operationId = 'op_' + Date.now();
+    const command = `###${commandPrefix}`;
+
+    const record = await OperationLog.create({
+        operatorId: user._id,
+        role: user.role,
+        operationType,
+        status: 'pending',
+        operationId
+    });
+
+    io.emit('command', { operationId, command });
+
+    const timeout = setTimeout(() => {
+        finalizeDeviceOperation(operationId, 'failed');
+    }, 30000);
+
+    pendingOperations[operationId] = {
+        category: 'deviceOperation',
+        userId: user._id.toString(),
+        deviceId: device._id.toString(),
+        recordId: record._id.toString(),
+        timeout
+    };
+
+    return res.status(200).json({ message: `${operationType}指令已发送`, operationId });
+}
+
+exports.changeRotation = (req, res) => {
+    return initiateDeviceOperation(req, res, 'change_rotation', 'hz');
+};
+
+exports.changeCurrency = (req, res) => {
+    return initiateDeviceOperation(req, res, 'change_currency', 'hb');
+};
+
+exports.startStop = (req, res) => {
+    return initiateDeviceOperation(req, res, 'start_stop', 'ks');
+};
+
+exports.settlement = (req, res) => {
+    return initiateDeviceOperation(req, res, 'settlement', 'js');
+}
