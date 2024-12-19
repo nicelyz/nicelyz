@@ -1,20 +1,19 @@
 // frontend/src/api.js
 import axios from 'axios';
-import config from './config';
 
-// 创建一个自定义的 Axios 实例
+// 创建 Axios 实例
 const api = axios.create({
-    baseURL: config.API_BASE_URL
+    baseURL: 'http://localhost:5000', // 后端地址
 });
 
-// 请求拦截器，自动添加 userid
+// 请求拦截器，自动附加 JWT
 api.interceptors.request.use(
-    (request) => {
-        const uid = localStorage.getItem('userId');
-        if (uid) {
-            request.headers.userid = uid;
+    (config) => {
+        const token = localStorage.getItem('token');
+        if (token) {
+            config.headers['Authorization'] = `Bearer ${token}`;
         }
-        return request;
+        return config;
     },
     (error) => {
         return Promise.reject(error);
