@@ -7,7 +7,8 @@ const PointsRecordSchema = new mongoose.Schema({
     operation: { type: String, enum: ['credit', 'debit'], required: true },
     points: { type: Number, required: true },
     timestamp: { type: Date, default: Date.now },
-    status: { type: String, enum: ['success', 'failed'], required: true },
+    // 将status的enum增加'pending'
+    status: { type: String, enum: ['pending', 'success', 'failed'], required: true },
     operationId: { type: String, unique: true, required: true }
 }, { timestamps: true });
 

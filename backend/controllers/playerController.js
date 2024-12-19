@@ -2,13 +2,86 @@
 const User = require('../models/User');
 const Device = require('../models/Device');
 const PointsRecord = require('../models/PointsRecord');
-// 假设io实例从全局导入或从一个单例中获取
-// 暂时简化处理：在index.js中导出io以便在此使用。
 
-let io; 
+let io;
+const pendingOperations = {};
+
 module.exports.setIO = (socketIO) => {
     io = socketIO;
+
+    // 监听设备反馈事件
+    io.on('connection', (socket) => {
+        console.log('Device or client connected:', socket.id);
+
+        socket.on('feedback', (data) => {
+            // data应包含 { operationId: 'xxx', feedback: 'sf1000' 或 'sffail' }
+            handleFeedback(data.operationId, data.feedback);
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Client disconnected:', socket.id);
+        });
+    });
 };
+
+function handleFeedback(operationId, feedback) {
+    const op = pendingOperations[operationId];
+    if (!op) return; // 无此操作，可能定时器超时已清除
+
+    clearTimeout(op.timeout);
+
+    // 判断反馈是成功还是失败
+    // 假设成功反馈形如 'sf1000'，失败 'sffail' or 不符合预期
+    if (feedback && feedback.startsWith('sf') && feedback !== 'sffail') {
+        // 成功反馈
+        finalizeCreditOperation(operationId, 'success');
+    } else {
+        // 失败反馈
+        finalizeCreditOperation(operationId, 'failed');
+    }
+}
+
+async function finalizeCreditOperation(operationId, status) {
+    const op = pendingOperations[operationId];
+    if (!op) return;
+
+    const { userId, deviceId, points, recordId } = op;
+    delete pendingOperations[operationId]; // 无论成功失败都先删除pending操作
+
+    const user = await User.findById(userId);
+    const device = await Device.findById(deviceId);
+    const record = await PointsRecord.findById(recordId);
+
+    if (!record || !user) {
+        // 如果关键数据缺失则无法正常更新，但至少不会报错
+        return;
+    }
+
+    if (status === 'success') {
+        // 上分成功已在初始时扣分和占用设备，不需返还积分
+        record.status = 'success';
+        await record.save();
+        // 设备和用户已在credit时更新，这里无需变动
+    } else {
+        // 上分失败或超时，返还积分，标记用户异常
+        user.currentPoints += points;
+        user.exceptionStatus = true;
+        await user.save();
+
+        // 记录失败状态
+        record.status = 'failed';
+        await record.save();
+
+        // 仅在device存在的情况下恢复设备状态
+        if (device) {
+            device.status = 'idle';
+            device.currentHolder = null;
+            await device.save();
+        } else {
+            console.warn(`Device ${deviceId} not found. Can't reset device status.`);
+        }
+    }
+}
 
 exports.credit = async (req, res) => {
     const { deviceId, points } = req.body;
@@ -37,7 +110,6 @@ exports.credit = async (req, res) => {
         return res.status(400).json({ message: '上分操作异常，请联系管理员' });
     }
 
-    // 查找设备
     const device = await Device.findById(deviceId);
     if (!device || device.status !== 'idle') {
         return res.status(400).json({ message: '设备不可用或已被占用' });
@@ -60,20 +132,34 @@ exports.credit = async (req, res) => {
     // 生成operationId
     const operationId = 'op_' + Date.now();
 
-    // 创建积分记录
-    const record = new PointsRecord({
+    // 创建积分记录，初始为pending状态，需要在PointsRecord.js中enum加入'pending'
+    const record = await PointsRecord.create({
         userId: user._id,
         deviceId: device._id,
         operation: 'credit',
         points,
-        status: 'success', // 暂定为成功，后续完善反馈机制
+        status: 'pending',
         operationId
     });
-    await record.save();
 
-    // 发送上分指令给设备
+    // 发送上分指令给设备, 包含operationId
     const command = `###sf${points}e`;
-    io.emit('command', command); // 实际应发送给特定deviceId对应的socket，需后续完善
+    io.emit('command', { operationId, command });
+
+    // 设置定时器（测试用30秒）
+    const timeout = setTimeout(() => {
+        // 超时处理
+        finalizeCreditOperation(operationId, 'failed');
+    }, 30000);
+
+    // 存储操作上下文
+    pendingOperations[operationId] = {
+        userId: user._id.toString(),
+        deviceId: device._id.toString(),
+        points,
+        recordId: record._id.toString(),
+        timeout
+    };
 
     return res.status(200).json({ message: '上分指令已发送', operationId });
 };
@@ -96,12 +182,11 @@ exports.debit = async (req, res) => {
         return res.status(400).json({ message: '设备不可用或未被该玩家占用' });
     }
 
-    // 发送下分指令给设备
+    // 下分指令仍无异步反馈，后续可完善
     const command = `###tf`;
-    io.emit('command', command); // 实际应发送给相应设备的socket
+    io.emit('command', { operationId: 'op_'+Date.now(), command });
 
-    // 假设直接成功（后续完善反馈）
-    const points = 1000; // 模拟从设备获得1000分，后续根据反馈动态确定
+    const points = 1000;
     user.currentPoints += points;
     user.occupiedDevices -= 1;
     await user.save();
@@ -116,7 +201,7 @@ exports.debit = async (req, res) => {
         deviceId: device._id,
         operation: 'debit',
         points,
-        status: 'success', // 暂定成功，后续根据反馈完善
+        status: 'success',
         operationId
     });
     await record.save();
