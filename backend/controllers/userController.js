@@ -1,76 +1,78 @@
 // backend/controllers/userController.js
 const User = require('../models/User');
+const bcrypt = require('bcrypt');
+const { generateToken } = require('../utils/jwt');
 
+// 用户注册
 exports.register = async (req, res) => {
     const { username, password } = req.body;
-    if (!username || !password) {
-        return res.status(400).json({ message: '用户名和密码为必填项' });
+    try {
+        // 检查用户名是否已存在
+        const existingUser = await User.findOne({ username });
+        if (existingUser) {
+            return res.status(400).json({ message: '用户名已存在' });
+        }
+
+        // 哈希密码
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // 创建新用户
+        const newUser = new User({
+            username,
+            password: hashedPassword,
+        });
+
+        await newUser.save();
+
+        res.status(201).json({ message: '注册成功' });
+    } catch (error) {
+        console.error('注册失败:', error);
+        res.status(500).json({ message: '注册失败', error: error.message });
     }
-
-    // 检查用户名是否已存在
-    const existingUser = await User.findOne({ username });
-    if (existingUser) {
-        return res.status(400).json({ message: '用户名已被注册' });
-    }
-
-    // 创建新用户（明文密码存储，测试阶段不加密）
-    const newUser = new User({ username, password });
-    await newUser.save();
-
-    return res.status(201).json({ message: '注册成功' });
 };
 
+// 用户登录
 exports.login = async (req, res) => {
     const { username, password } = req.body;
-    if (!username || !password) {
-        return res.status(400).json({ message: '用户名和密码为必填项' });
-    }
+    try {
+        // 查找用户
+        const user = await User.findOne({ username });
+        if (!user) {
+            return res.status(400).json({ message: '用户名或密码错误' });
+        }
 
-    const user = await User.findOne({ username });
-    if (!user) {
-        return res.status(400).json({ message: '用户名或密码错误' });
-    }
+        // 比较密码
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ message: '用户名或密码错误' });
+        }
 
-    // 无加密，直接比较明文密码
-    if (user.password !== password) {
-        return res.status(400).json({ message: '用户名或密码错误' });
-    }
+        // 生成 JWT
+        const token = generateToken(user);
 
-    // 登录成功，返回userId
-    return res.status(200).json({
-        message: '登录成功',
-        userId: user._id.toString() // 将ObjectId转换为字符串
-    });
+        res.status(200).json({ message: '登录成功', token });
+    } catch (error) {
+        console.error('登录失败:', error); // 记录详细错误
+        res.status(500).json({ message: '登录失败', error: error.message }); // 返回错误消息
+    }
 };
 
+// 获取用户信息
 exports.getUserInfo = async (req, res) => {
-    const userId = req.headers.userid;
-    if (!userId) {
-        return res.status(400).json({ message: '缺少userid' });
-    }
-
     try {
-        const user = await User.findById(userId, {
-            username: 1,
-            currentPoints: 1,
-            exceptionStatus: 1,
-            role: 1,
-            status: 1
-        });
+        const user = await User.findById(req.user.id, '-password');
         if (!user) {
             return res.status(404).json({ message: '用户不存在' });
         }
-
-        return res.status(200).json({
-            userId: user._id.toString(),
-            username: user.username,
-            currentPoints: user.currentPoints,
-            exceptionStatus: user.exceptionStatus,
-            role: user.role,
-            status: user.status
-        });
+        res.status(200).json(user);
     } catch (error) {
-        console.error('获取用户信息错误:', error);
-        return res.status(400).json({ message: '用户ID无效或类型不正确' });
+        console.error('获取用户信息失败:', error);
+        res.status(500).json({ message: '获取用户信息失败', error: error.message });
     }
+};
+
+// 用户登出（可选实现）
+exports.logout = async (req, res) => {
+    // 如果使用刷新令牌，可以在此处理刷新令牌的失效
+    res.status(200).json({ message: '登出成功' });
 };

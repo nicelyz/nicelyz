@@ -1,21 +1,35 @@
 // backend/routes/adminRoutes.js
 const express = require('express');
 const router = express.Router();
-const { createDevice, getDevices, getDeviceById, updateDevice, deleteDevice } = require('../controllers/adminController');
+const adminController = require('../controllers/adminController');
+const authMiddleware = require('../middlewares/authMiddleware');
+const adminMiddleware = require('../middlewares/adminMiddleware');
 
-// 创建设备
-router.post('/devices', createDevice);
+// 使用认证中间件验证用户身份
+router.use(authMiddleware);
+// 使用管理员中间件验证用户角色
+router.use(adminMiddleware);
 
-// 获取设备列表
-router.get('/devices', getDevices);
+// 用户管理路由
+router.get('/users', adminController.getAllUsers);
+router.get('/users/:id', adminController.getUserById);
+router.put('/users/:id', adminController.updateUser);
+router.delete('/users/:id', adminController.deleteUser);
 
-// 获取单个设备详情
-router.get('/devices/:id', getDeviceById);
+// 设备管理路由
+router.get('/devices', adminController.getAllDevices);
+router.post('/devices', adminController.createDevice);
+router.get('/devices/:id', adminController.getDeviceById);
+router.put('/devices/:id', adminController.updateDevice);
+router.delete('/devices/:id', adminController.deleteDevice);
+router.post('/devices/:id/control', adminController.controlDevice);
 
-// 更新设备信息
-router.put('/devices/:id', updateDevice);
+// 数据统计路由
+router.get('/statistics/users', adminController.getUserStatistics);
+router.get('/statistics/devices', adminController.getDeviceStatistics);
 
-// 删除设备
-router.delete('/devices/:id', deleteDevice);
+// 系统设置路由
+router.get('/settings', adminController.getSettings);
+router.put('/settings', adminController.updateSettings);
 
 module.exports = router;

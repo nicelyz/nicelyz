@@ -1,89 +1,216 @@
 // backend/controllers/adminController.js
+const User = require('../models/User');
 const Device = require('../models/Device');
+const Settings = require('../models/Settings'); // 确保 Settings 模型存在
 
+// 获取所有用户
+exports.getAllUsers = async (req, res) => {
+    try {
+        const users = await User.find({}, '-password'); // 排除密码字段
+        res.status(200).json(users);
+    } catch (error) {
+        console.error('获取用户列表失败:', error);
+        res.status(500).json({ message: '获取用户列表失败', error: error.message });
+    }
+};
+
+// 获取单个用户信息
+exports.getUserById = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id, '-password');
+        if (!user) return res.status(404).json({ message: '用户不存在' });
+        res.status(200).json(user);
+    } catch (error) {
+        console.error('获取用户信息失败:', error);
+        res.status(500).json({ message: '获取用户信息失败', error: error.message });
+    }
+};
+
+// 更新用户信息
+exports.updateUser = async (req, res) => {
+    const { role, status, currentPoints } = req.body;
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ message: '用户不存在' });
+        
+        if (role) user.role = role;
+        if (status) user.status = status;
+        if (currentPoints !== undefined) user.currentPoints = currentPoints;
+
+        await user.save();
+        res.status(200).json({ message: '用户信息更新成功', user });
+    } catch (error) {
+        console.error('更新用户信息失败:', error);
+        res.status(500).json({ message: '更新用户信息失败', error: error.message });
+    }
+};
+
+// 删除用户
+exports.deleteUser = async (req, res) => {
+    try {
+        const user = await User.findByIdAndDelete(req.params.id);
+        if (!user) return res.status(404).json({ message: '用户不存在' });
+        res.status(200).json({ message: '用户删除成功' });
+    } catch (error) {
+        console.error('删除用户失败:', error);
+        res.status(500).json({ message: '删除用户失败', error: error.message });
+    }
+};
+
+// 获取所有设备
+exports.getAllDevices = async (req, res) => {
+    try {
+        const devices = await Device.find({});
+        res.status(200).json(devices);
+    } catch (error) {
+        console.error('获取设备列表失败:', error);
+        res.status(500).json({ message: '获取设备列表失败', error: error.message });
+    }
+};
+
+// 创建新设备
 exports.createDevice = async (req, res) => {
-    const { name, zone, ipAddress, probability, videoStreamURL } = req.body;
-    if (!name || !zone || !ipAddress) {
-        return res.status(400).json({ message: 'name、zone、ipAddress为必填字段' });
+    const { name, status, rotation, currency } = req.body;
+    try {
+        const newDevice = new Device({ name, status, rotation, currency });
+        await newDevice.save();
+        res.status(201).json({ message: '设备创建成功', device: newDevice });
+    } catch (error) {
+        console.error('创建设备失败:', error);
+        res.status(500).json({ message: '创建设备失败', error: error.message });
     }
-
-    // 检查ipAddress是否唯一
-    const existing = await Device.findOne({ ipAddress });
-    if (existing) {
-        return res.status(400).json({ message: '该IP地址已存在' });
-    }
-
-    const newDevice = new Device({
-        name,
-        zone,
-        ipAddress,
-        probability: probability || 100,
-        status: 'idle',
-        videoStreamURL: videoStreamURL || ''
-    });
-
-    await newDevice.save();
-    return res.status(201).json({ message: '设备创建成功', deviceId: newDevice._id.toString() });
 };
 
-exports.getDevices = async (req, res) => {
-    // 可根据需要添加过滤参数
-    const devices = await Device.find({});
-    return res.status(200).json(devices);
-};
-
+// 获取单个设备信息
 exports.getDeviceById = async (req, res) => {
-    const { id } = req.params;
-    const device = await Device.findById(id);
-    if (!device) {
-        return res.status(404).json({ message: '设备不存在' });
+    try {
+        const device = await Device.findById(req.params.id);
+        if (!device) return res.status(404).json({ message: '设备不存在' });
+        res.status(200).json(device);
+    } catch (error) {
+        console.error('获取设备信息失败:', error);
+        res.status(500).json({ message: '获取设备信息失败', error: error.message });
     }
-    return res.status(200).json(device);
 };
 
+// 更新设备信息
 exports.updateDevice = async (req, res) => {
-    const { id } = req.params;
-    const { name, zone, ipAddress, probability, videoStreamURL, status } = req.body;
+    const { name, status, rotation, currency } = req.body;
+    try {
+        const device = await Device.findById(req.params.id);
+        if (!device) return res.status(404).json({ message: '设备不存在' });
+        
+        if (name) device.name = name;
+        if (status) device.status = status;
+        if (rotation !== undefined) device.rotation = rotation;
+        if (currency) device.currency = currency;
 
-    const device = await Device.findById(id);
-    if (!device) {
-        return res.status(404).json({ message: '设备不存在' });
+        await device.save();
+        res.status(200).json({ message: '设备信息更新成功', device });
+    } catch (error) {
+        console.error('更新设备信息失败:', error);
+        res.status(500).json({ message: '更新设备信息失败', error: error.message });
     }
-
-    if (ipAddress && ipAddress !== device.ipAddress) {
-        // 检查新的ipAddress是否冲突
-        const existing = await Device.findOne({ ipAddress });
-        if (existing) {
-            return res.status(400).json({ message: '该IP地址已存在' });
-        }
-    }
-
-    if (name !== undefined) device.name = name;
-    if (zone !== undefined) device.zone = zone;
-    if (ipAddress !== undefined) device.ipAddress = ipAddress;
-    if (probability !== undefined) device.probability = probability;
-    if (videoStreamURL !== undefined) device.videoStreamURL = videoStreamURL;
-    if (status !== undefined) {
-        if (!['idle', 'occupied', 'fault'].includes(status)) {
-            return res.status(400).json({ message: '状态无效，必须为idle、occupied或fault' });
-        }
-        device.status = status;
-        if (status === 'idle') {
-            device.currentHolder = null; // 如果状态为idle则清空持有者
-        }
-    }
-
-    await device.save();
-    return res.status(200).json({ message: '设备更新成功' });
 };
 
+// 删除设备
 exports.deleteDevice = async (req, res) => {
-    const { id } = req.params;
-    const device = await Device.findById(id);
-    if (!device) {
-        return res.status(404).json({ message: '设备不存在' });
+    try {
+        const device = await Device.findByIdAndDelete(req.params.id);
+        if (!device) return res.status(404).json({ message: '设备不存在' });
+        res.status(200).json({ message: '设备删除成功' });
+    } catch (error) {
+        console.error('删除设备失败:', error);
+        res.status(500).json({ message: '删除设备失败', error: error.message });
     }
+};
 
-    await Device.deleteOne({ _id: id });
-    return res.status(200).json({ message: '设备已删除' });
+// 设备控制（开停机等）
+exports.controlDevice = async (req, res) => {
+    const { action } = req.body; // action 可以是 "start", "stop", "reset" 等
+    try {
+        const device = await Device.findById(req.params.id);
+        if (!device) return res.status(404).json({ message: '设备不存在' });
+        
+        switch(action) {
+            case 'start':
+                device.status = 'online';
+                break;
+            case 'stop':
+                device.status = 'offline';
+                break;
+            case 'reset':
+                device.rotation = 0;
+                break;
+            // 添加其他操作
+            default:
+                return res.status(400).json({ message: '无效的操作类型' });
+        }
+
+        await device.save();
+        res.status(200).json({ message: `设备操作 ${action} 成功`, device });
+    } catch (error) {
+        console.error(`设备操作 ${action} 失败:`, error);
+        res.status(500).json({ message: '设备操作失败', error: error.message });
+    }
+};
+
+// 获取用户统计
+exports.getUserStatistics = async (req, res) => {
+    try {
+        const totalUsers = await User.countDocuments();
+        const activeUsers = await User.countDocuments({ status: 'active' });
+        const adminUsers = await User.countDocuments({ role: 'admin' });
+        res.status(200).json({ totalUsers, activeUsers, adminUsers });
+    } catch (error) {
+        console.error('获取用户统计失败:', error);
+        res.status(500).json({ message: '获取用户统计失败', error: error.message });
+    }
+};
+
+// 获取设备统计
+exports.getDeviceStatistics = async (req, res) => {
+    try {
+        const totalDevices = await Device.countDocuments();
+        const onlineDevices = await Device.countDocuments({ status: 'online' });
+        const offlineDevices = await Device.countDocuments({ status: 'offline' });
+        res.status(200).json({ totalDevices, onlineDevices, offlineDevices });
+    } catch (error) {
+        console.error('获取设备统计失败:', error);
+        res.status(500).json({ message: '获取设备统计失败', error: error.message });
+    }
+};
+
+// 获取系统设置
+exports.getSettings = async (req, res) => {
+    try {
+        const settings = await Settings.findOne({});
+        if (!settings) return res.status(404).json({ message: '系统设置不存在' });
+        res.status(200).json(settings);
+    } catch (error) {
+        console.error('获取系统设置失败:', error);
+        res.status(500).json({ message: '获取系统设置失败', error: error.message });
+    }
+};
+
+// 更新系统设置
+exports.updateSettings = async (req, res) => {
+    const { key, value } = req.body; // 假设设置项以键值对形式存储
+    try {
+        const settings = await Settings.findOne({});
+        if (!settings) {
+            // 如果设置不存在，创建新的设置文档
+            const newSettings = new Settings({ [key]: value });
+            await newSettings.save();
+            return res.status(201).json({ message: '系统设置创建成功', settings: newSettings });
+        }
+
+        // 更新已有的设置
+        settings[key] = value;
+        await settings.save();
+        res.status(200).json({ message: '系统设置更新成功', settings });
+    } catch (error) {
+        console.error('更新系统设置失败:', error);
+        res.status(500).json({ message: '更新系统设置失败', error: error.message });
+    }
 };

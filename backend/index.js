@@ -1,10 +1,11 @@
-// backend/index.js
+// backend/index.js、
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const mongoose = require('mongoose');
-require('dotenv').config();
+
 
 const app = express();
 const server = http.createServer(app);
@@ -14,6 +15,13 @@ const io = socketIo(server, {
         methods: ["GET", "POST"]
     }
 });
+
+// 中间件配置
+app.use(cors({
+    origin: 'http://localhost:3000', // 根据您的前端地址调整
+    credentials: false, // 不使用会话或凭证
+}));
+
 
 app.use(cors());
 app.use(express.json());
