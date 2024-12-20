@@ -25,6 +25,8 @@ router.delete('/devices/:id', adminController.deleteDevice);
 router.post('/devices/:id/control', adminController.controlDevice);
 router.post('/users/:id/add-points', adminController.addPoints);
 router.post('/users/:id/deduct-points', adminController.deductPoints);
+router.post('/users/:id/ban', adminController.banUser);
+router.post('/users/:id/unban', adminController.unbanUser);
 // 数据统计路由
 router.get('/statistics/users', adminController.getUserStatistics);
 router.get('/statistics/devices', adminController.getDeviceStatistics);

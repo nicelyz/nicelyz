@@ -8,7 +8,6 @@ const UserSchema = new mongoose.Schema({
     currentPoints: { type: Number, default: 0 },
     exceptionStatus: { type: Boolean, default: false }, // 上分异常状态
     occupiedDevices: { type: Number, default: 0 }, // 已占用设备数量
-    status: { type: String, enum: ['active', 'banned'], default: 'active' }
+    status: { type: String, enum: ['active', 'inactive'], default: 'active' }, // 'active' 为正常，'inactive' 为封禁
 }, { timestamps: true });
-
 module.exports = mongoose.model('User', UserSchema);

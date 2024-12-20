@@ -270,3 +270,53 @@ exports.deductPoints = async (req, res) => {
         res.status(500).json({ message: '减少积分失败', error: error.message });
     }
 };
+
+// 封禁用户
+exports.banUser = async (req, res) => {
+    const userId = req.params.id; // 从URL参数获取用户ID
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            console.log(`用户ID: ${userId} 不存在`);
+            return res.status(404).json({ message: '用户不存在' });
+        }
+
+        if (user.status === 'inactive') {
+            return res.status(400).json({ message: '用户已被封禁' });
+        }
+
+        user.status = 'inactive';
+        await user.save();
+
+        res.status(200).json({ message: '用户已被封禁', user });
+    } catch (error) {
+        console.error('封禁用户失败:', error);
+        res.status(500).json({ message: '封禁用户失败', error: error.message });
+    }
+};
+
+// 解封用户
+exports.unbanUser = async (req, res) => {
+    const userId = req.params.id; // 从URL参数获取用户ID
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            console.log(`用户ID: ${userId} 不存在`);
+            return res.status(404).json({ message: '用户不存在' });
+        }
+
+        if (user.status === 'active') {
+            return res.status(400).json({ message: '用户未被封禁' });
+        }
+
+        user.status = 'active';
+        await user.save();
+
+        res.status(200).json({ message: '用户已被解封', user });
+    } catch (error) {
+        console.error('解封用户失败:', error);
+        res.status(500).json({ message: '解封用户失败', error: error.message });
+    }
+};
