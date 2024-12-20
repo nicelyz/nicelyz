@@ -214,3 +214,59 @@ exports.updateSettings = async (req, res) => {
         res.status(500).json({ message: '更新系统设置失败', error: error.message });
     }
 };
+
+// 增加用户积分
+exports.addPoints = async (req, res) => {
+    const userId = req.params.id; // 从URL参数获取用户ID
+    const { points } = req.body;
+
+    if (points <= 0) {
+        return res.status(400).json({ message: '积分必须为正数' });
+    }
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            console.log(`用户ID: ${userId} 不存在`);
+            return res.status(404).json({ message: '用户不存在' });
+        }
+
+        user.currentPoints += points;
+        await user.save();
+
+        res.status(200).json({ message: '积分增加成功', user });
+    } catch (error) {
+        console.error('增加积分失败:', error);
+        res.status(500).json({ message: '增加积分失败', error: error.message });
+    }
+};
+
+// 减少用户积分
+exports.deductPoints = async (req, res) => {
+    const userId = req.params.id; // 从URL参数获取用户ID
+    const { points } = req.body;
+
+    if (points <= 0) {
+        return res.status(400).json({ message: '积分必须为正数' });
+    }
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            console.log(`用户ID: ${userId} 不存在`);
+            return res.status(404).json({ message: '用户不存在' });
+        }
+
+        if (user.currentPoints < points) {
+            return res.status(400).json({ message: '用户积分不足' });
+        }
+
+        user.currentPoints -= points;
+        await user.save();
+
+        res.status(200).json({ message: '积分减少成功', user });
+    } catch (error) {
+        console.error('减少积分失败:', error);
+        res.status(500).json({ message: '减少积分失败', error: error.message });
+    }
+};

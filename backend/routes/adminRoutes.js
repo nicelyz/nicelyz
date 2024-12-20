@@ -23,7 +23,8 @@ router.get('/devices/:id', adminController.getDeviceById);
 router.put('/devices/:id', adminController.updateDevice);
 router.delete('/devices/:id', adminController.deleteDevice);
 router.post('/devices/:id/control', adminController.controlDevice);
-
+router.post('/users/:id/add-points', adminController.addPoints);
+router.post('/users/:id/deduct-points', adminController.deductPoints);
 // 数据统计路由
 router.get('/statistics/users', adminController.getUserStatistics);
 router.get('/statistics/devices', adminController.getDeviceStatistics);
