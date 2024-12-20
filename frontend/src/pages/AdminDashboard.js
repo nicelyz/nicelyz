@@ -1,10 +1,13 @@
 // frontend/src/pages/AdminDashboard.js
-import React from 'react';
+import React, { useContext } from 'react';
 import { Link, Routes, Route } from 'react-router-dom';
 import UserManagement from './UserManagement';
+import { AuthContext } from '../contexts/AuthContext';
 // 导入其他管理页面组件，如 DeviceManagement, Statistics, Settings
 
-const AdminDashboard = ({ user }) => {
+const AdminDashboard = () => {
+    const { user, logout } = useContext(AuthContext);
+
     return (
         <div>
             <h2>管理员后台</h2>
@@ -15,6 +18,7 @@ const AdminDashboard = ({ user }) => {
                     <li><Link to="devices">设备管理</Link></li>
                     <li><Link to="statistics">数据统计</Link></li>
                     <li><Link to="settings">系统设置</Link></li>
+                    <li><button onClick={logout}>登出</button></li>
                 </ul>
             </nav>
             <Routes>

@@ -42,7 +42,7 @@ const UserManagement = () => {
     return (
         <div>
             <h2>用户管理</h2>
-            <table>
+            <table border="1">
                 <thead>
                     <tr>
                         <th>用户名</th>

@@ -1,55 +1,52 @@
 // frontend/src/pages/Login.js
-import React, { useState } from 'react';
-import api from '../api';
+import React, { useState, useContext } from 'react';
+import { AuthContext } from '../contexts/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 
-const Login = ({ setUser }) => {
+const Login = () => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
+    const { login } = useContext(AuthContext);
     const navigate = useNavigate();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        try {
-            const res = await api.post('/api/auth/login', { username, password });
-            alert(res.data.message);
-            // 存储令牌
-            localStorage.setItem('token', res.data.token);
-            // 获取用户信息
-            const userInfo = await api.get('/api/auth/userinfo');
-            setUser(userInfo.data);
+        const result = await login(username, password);
+        if (result.success) {
+            alert('登录成功');
             navigate('/admin'); // 登录成功后导航到管理员后台
-        } catch (err) {
-            console.error('登录失败', err);
-            alert(err.response?.data?.message || '登录失败');
+        } else {
+            alert(result.message);
         }
     };
 
     return (
-        <div>
+        <div className="container mt-5">
             <h2>登录</h2>
             <form onSubmit={handleSubmit}>
-                <div>
-                    <label>用户名:</label>
+                <div className="mb-3">
+                    <label className="form-label">用户名:</label>
                     <input
                         type="text"
+                        className="form-control"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         required
                     />
                 </div>
-                <div>
-                    <label>密码:</label>
+                <div className="mb-3">
+                    <label className="form-label">密码:</label>
                     <input
                         type="password"
+                        className="form-control"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
                     />
                 </div>
-                <button type="submit">登录</button>
+                <button type="submit" className="btn btn-primary">登录</button>
             </form>
-            <p>
+            <p className="mt-3">
                 没有账号？<Link to="/register">注册</Link>
             </p>
         </div>

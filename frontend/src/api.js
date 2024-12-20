@@ -1,7 +1,6 @@
 // frontend/src/api.js
 import axios from 'axios';
 
-// 创建 Axios 实例
 const api = axios.create({
     baseURL: 'http://localhost:5000', // 后端地址
 });
